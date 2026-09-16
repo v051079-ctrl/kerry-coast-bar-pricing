@@ -658,7 +658,6 @@ with tab_invoice:
     audit_rows = []
     total_invoiced = 0.0
     total_expected = 0.0
-    total_overcharge = 0.0
 
     for item in st.session_state.invoice_items:
         plu_str = str(item["PLU"])
@@ -684,13 +683,14 @@ with tab_invoice:
 
             if variance_bottle > 0.01:
                 status = "🔴 OVERCHARGED"
-                total_overcharge += variance_line
             elif variance_bottle < -0.01:
                 status = "🟢 UNDERCHARGED"
             else:
                 status = "✅ MATCHED"
         else:
             expected_bottle = None
+            # Фикс: Если контракта нет, принимаем ожидаемую сумму равной сумме в инвойсе (переплата = 0)
+            total_expected += line_total_inv
             variance_bottle = 0.0
             variance_line = 0.0
             status = "⚪ NO CONTRACT PRICE"
@@ -708,6 +708,11 @@ with tab_invoice:
             "Audit Status": status
         })
 
+    # Mathematical total overcharge strictly calculated as (Total Invoiced - Contract Expected)
+    total_invoiced = round(total_invoiced, 2)
+    total_expected = round(total_expected, 2)
+    total_overcharge = round(total_invoiced - total_expected, 2)
+
     # Summary metric tiles
     col_k1, col_k2, col_k3 = st.columns(3)
     col_k1.metric("Total Invoiced", f"€{total_invoiced:,.2f}")
@@ -718,27 +723,68 @@ with tab_invoice:
     else:
         col_k3.success("✅ All lines match contracted pricing!")
 
-    st.dataframe(pd.DataFrame(audit_rows), use_container_width=True, hide_index=True)
+    if audit_rows:
+        df_audit = pd.DataFrame(audit_rows)
+    else:
+        df_audit = pd.DataFrame(columns=[
+            "PLU", "Product Name", "Qty (Units)", "Pack Size", "Invoice Unit (€)",
+            "Cost / Bottle (Inv) (€)", "Contract / Bottle (€)", "Variance / Bottle (€)",
+            "Total Line Variance (€)", "Audit Status"
+        ])
+    st.dataframe(df_audit, use_container_width=True, hide_index=True)
 
-    # Add line to invoice
-    with st.expander("➕ Add Line Item to Invoice"):
-        with st.form("add_inv_line_form"):
-            ca, cb, cc, cd = st.columns(4)
-            catalog_choices = [f"{r['PLU']} - {r['Product Name']}" for _, r in st.session_state.master_df.iterrows()]
-            chosen_product = ca.selectbox("Item", catalog_choices)
-            qty_in = cb.number_input("Qty Units", min_value=1, value=1)
-            pack_in = cc.selectbox("Pack Size", [6, 12, 1, 24])
-            inv_p = cd.number_input("Invoice Price per Unit (€)", min_value=1.0, value=120.0, step=1.0)
+    if not st.session_state.invoice_items:
+        st.info("ℹ️ Invoice has no line items. Use the form below to add drinks from the Master Catalog.")
 
-            if st.form_submit_button("Add Item to Invoice", type="primary"):
-                st.session_state.invoice_items.append({
-                    "PLU": chosen_product.split(" - ")[0],
-                    "Product Name": chosen_product.split(" - ")[1],
-                    "Qty Units": int(qty_in),
-                    "Bottles in Unit": int(pack_in),
-                    "Invoice Price": float(inv_p)
-                })
-                st.rerun()
+    col_inv_a, col_inv_b = st.columns(2)
+
+    # 1. Add line to invoice
+    with col_inv_a:
+        with st.expander("➕ Add Line Item to Invoice", expanded=False):
+            with st.form("add_inv_line_form"):
+                ca, cb = st.columns(2)
+                catalog_choices = [f"{r['PLU']} - {r['Product Name']}" for _, r in st.session_state.master_df.iterrows()]
+                chosen_product = ca.selectbox("Select Product (Master Catalog)*", catalog_choices)
+                qty_in = cb.number_input("Qty Units (Cases / Packs)*", min_value=1, value=1, step=1)
+
+                cc, cd = st.columns(2)
+                pack_in = cc.selectbox("Pack Size (Bottles in Unit)*", [6, 12, 1, 24])
+                inv_p = cd.number_input("Invoice Price per Unit (€)*", min_value=0.5, value=120.0, step=1.0)
+
+                if st.form_submit_button("Add Item to Invoice", type="primary", use_container_width=True):
+                    st.session_state.invoice_items.append({
+                        "PLU": chosen_product.split(" - ")[0],
+                        "Product Name": chosen_product.split(" - ")[1],
+                        "Qty Units": int(qty_in),
+                        "Bottles in Unit": int(pack_in),
+                        "Invoice Price": float(inv_p)
+                    })
+                    st.rerun()
+
+    # 2. Manage / Remove line items or clear entire invoice
+    with col_inv_b:
+        with st.expander("🗑️ Remove Lines / Clear Invoice", expanded=False):
+            if st.session_state.invoice_items:
+                line_choices = [
+                    f"Line #{i + 1}: {item['Product Name']} (Qty: {item['Qty Units']}, Pack: x{item['Bottles in Unit']}, €{item['Invoice Price']:.2f})"
+                    for i, item in enumerate(st.session_state.invoice_items)
+                ]
+                selected_line = st.selectbox("Select Line to Remove:", line_choices, key="sel_inv_line_rem")
+
+                col_btn_rem, col_btn_clear = st.columns(2)
+                if col_btn_rem.button("❌ Remove Selected Line", type="secondary", use_container_width=True):
+                    line_idx = int(selected_line.split(":")[0].replace("Line #", "").strip()) - 1
+                    if 0 <= line_idx < len(st.session_state.invoice_items):
+                        popped_item = st.session_state.invoice_items.pop(line_idx)
+                        st.success(f"Removed '{popped_item['Product Name']}' from invoice.")
+                        st.rerun()
+
+                if col_btn_clear.button("🗑️ Clear Entire Invoice", type="secondary", use_container_width=True):
+                    st.session_state.invoice_items = []
+                    st.success("All items cleared from invoice.")
+                    st.rerun()
+            else:
+                st.caption("Invoice is currently empty — no lines to remove.")
 
     # Credit Note Generator
     if total_overcharge > 0.01:

@@ -5,14 +5,13 @@ Complete standalone Python/Streamlit web application for bar stock & price audit
 Fully compatible with Streamlit Cloud & local execution.
 
 Includes:
-1. Master Catalog (PLU Touch Office, Categories, Volumes, Irish Measure calculations, CRUD)
-2. Supplier Prices (Wholesale distributors, FOC "Buy X Get Y Free" deals, Optic cost)
+1. Master Catalog (Complete 76 PLU items directly from official TouchOffice POS database)
+2. Supplier Prices (All 80 wholesale distributor price quotes from Classic Drinks, Cliffords C&C, Sive)
 3. Price Comparison (Live multi-supplier benchmark, lowest bottle/measure cost, savings)
 4. Invoice Check (Delivery invoice audit, contract price variance, overcharge claim generator)
 5. Import / Export (Consolidated 4-sheet Excel Kerry_Coast_Spirits_Master_Catalog.xlsx)
 """
 
-import os
 import io
 from datetime import datetime
 import pandas as pd
@@ -34,77 +33,186 @@ SHEET_PRICES = "Supplier Prices"
 SHEET_COMPARISON = "Price Comparison"
 SHEET_INVOICE = "Invoice Check"
 
-# Irish optics & bar serving standards
+# Irish optics & bar serving standards (ml)
 STANDARD_MEASURES = {
-    "Whiskey": 35.5,
-    "Gin": 35.5,
-    "Vodka": 35.5,
-    "Rum": 35.5,
-    "Brandy/Cognac": 35.5,
-    "Tequila": 35.5,
-    "Liqueur": 50.0,
-    "Vermouth": 50.0,
+    "Spirits": 35.5,
+    "Liqueurs & Aperitifs": 50.0,
     "Wine & Sparkling": 175.0,
     "Beer & Cider": 568.0,
     "Soft Drinks & Mixers": 200.0,
+    "Syrups & Cordials": 25.0
 }
 
 # ==============================================================================
-# INITIAL DATASETS (Embedded seed data for instant startup on Streamlit Cloud)
+# COMPLETE 76-ITEM MASTER CATALOG & 80 SUPPLIER PRICE QUOTES
 # ==============================================================================
 DEFAULT_MASTER_DATA = [
-    {"PLU": "121", "Product Name": "PADDY", "Category": "Whiskey", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "122", "Product Name": "POWER / POWERS GOLD LABEL", "Category": "Whiskey", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "123", "Product Name": "JAMESON", "Category": "Whiskey", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "124", "Product Name": "JAMESON BLACK BARREL", "Category": "Whiskey", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "125", "Product Name": "BUSHMILLS RED / ORIGINAL", "Category": "Whiskey", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "126", "Product Name": "BLACK BUSH", "Category": "Whiskey", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "127", "Product Name": "GREENSPOT", "Category": "Whiskey", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "128", "Product Name": "YELLOW SPOT", "Category": "Whiskey", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "132", "Product Name": "RED BREAST 12YR", "Category": "Whiskey", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "161", "Product Name": "GORDONS GIN", "Category": "Gin", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "164", "Product Name": "DINGLE GIN", "Category": "Gin", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "168", "Product Name": "BOMBAY SAPPHIRE", "Category": "Gin", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "191", "Product Name": "SMIRNOFF VODKA", "Category": "Vodka", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "194", "Product Name": "TITOS", "Category": "Vodka", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "211", "Product Name": "HENNESSY", "Category": "Brandy/Cognac", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "221", "Product Name": "BACARDI", "Category": "Rum", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "231", "Product Name": "JACK DANIELS", "Category": "Whiskey", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "261", "Product Name": "JOSE CUERVO BLANCO", "Category": "Tequila", "Typical Volume (ml)": 700, "Measure Size (ml)": 35.5, "Active": "YES"},
-    {"PLU": "271", "Product Name": "JAGERMEISTER", "Category": "Liqueur", "Typical Volume (ml)": 700, "Measure Size (ml)": 50.0, "Active": "YES"},
-    {"PLU": "274", "Product Name": "SAMBUCA", "Category": "Liqueur", "Typical Volume (ml)": 700, "Measure Size (ml)": 50.0, "Active": "YES"},
-    {"PLU": "291", "Product Name": "BAILEYS", "Category": "Liqueur", "Typical Volume (ml)": 700, "Measure Size (ml)": 50.0, "Active": "YES"},
-    {"PLU": "300", "Product Name": "DISARONNO", "Category": "Liqueur", "Typical Volume (ml)": 700, "Measure Size (ml)": 50.0, "Active": "YES"},
-    {"PLU": "301", "Product Name": "VALENTIA VERMOUTH", "Category": "Vermouth", "Typical Volume (ml)": 700, "Measure Size (ml)": 50.0, "Active": "YES"},
-    {"PLU": "1508", "Product Name": "APEROL", "Category": "Liqueur", "Typical Volume (ml)": 700, "Measure Size (ml)": 50.0, "Active": "YES"}
+    {"PLU":"121","Product Name":"PADDY","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"122","Product Name":"POWER / POWERS GOLD LABEL","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"123","Product Name":"JAMESON","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"124","Product Name":"JAMESON BLACK BARREL","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"125","Product Name":"BUSHMILLS RED / ORIGINAL","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"126","Product Name":"BLACK BUSH","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"127","Product Name":"GREENSPOT","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"128","Product Name":"YELLOW SPOT","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"129","Product Name":"RED SPOT","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"131","Product Name":"MIDDLETON","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"132","Product Name":"RED BREAST 12YR","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"133","Product Name":"RED BREAST 15YR","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"134","Product Name":"RED BREAST 21YR","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"135","Product Name":"SKELLIG WHISKEY","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"136","Product Name":"JAMESON BLACK BARREL (Alt PLU)","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"161","Product Name":"GORDONS GIN","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"162","Product Name":"GORDONS PINK GIN","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"163","Product Name":"DINGLE PINK GIN","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"164","Product Name":"DINGLE GIN","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"165","Product Name":"SKELLIG GIN","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"166","Product Name":"HENDRICKS","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"167","Product Name":"PORTMAGEE GIN","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"168","Product Name":"BOMBAY SAPPHIRE","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"169","Product Name":"GORDONS 00 GIN","Category":"Soft Drinks & Mixers","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"190","Product Name":"DINGLE VODKA","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"191","Product Name":"SMIRNOFF VODKA","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"192","Product Name":"ABSOLUT","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"193","Product Name":"GREY GOOSE","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"194","Product Name":"TITOS","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"195","Product Name":"VODKA MONSTER","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"211","Product Name":"HENNESSY","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"212","Product Name":"HENNESSY & PORT","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"213","Product Name":"REMY MARTIN","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"221","Product Name":"BACARDI","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"223","Product Name":"MALIBU","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"224","Product Name":"CAPTAIN MORGAN","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"231","Product Name":"JACK DANIELS","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"234","Product Name":"CANADIAN CLUB","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"235","Product Name":"SOUTHERN COMFORT","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"236","Product Name":"WOODFORD RESERVE","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"252","Product Name":"TEACHERS","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"253","Product Name":"JOHNNY WALKER RED","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"254","Product Name":"JOHNNY WALKER BLACK","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"261","Product Name":"JOSE CUERVO BLANCO","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"262","Product Name":"JOSE CUERVO REPOSADO","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"263","Product Name":"CASAMIGOS BLANCO","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"264","Product Name":"CASAMIGOS REPOSADO","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"272","Product Name":"TEQUILA (generic)","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"271","Product Name":"JAGERMEISTER","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"273","Product Name":"TEQUILA ROSE","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"274","Product Name":"SAMBUCA","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"275","Product Name":"BABY GUINNESS","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"276","Product Name":"AFTER SHOCK","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"277","Product Name":"APPLE SOURZ","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"289","Product Name":"CREME DE MENTHE","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"291","Product Name":"BAILEYS","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"292","Product Name":"TIA MARIA","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"293","Product Name":"KAHLUA","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"294","Product Name":"CAMPARI","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"295","Product Name":"PEACH SCHNAPPS","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"298","Product Name":"COINTREAU","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"299","Product Name":"GRAND MARNIER","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"300","Product Name":"DISARONNO","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"1502","Product Name":"TRIPLE SEC","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"1503","Product Name":"AMARETTO","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"1508","Product Name":"APEROL","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"296","Product Name":"MARTINI","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":750,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"297","Product Name":"MARTINI ROSSO","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":750,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"301","Product Name":"VALENTIA VERMOUTH","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"305","Product Name":"PORT","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":750,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"306","Product Name":"SHERRY","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":750,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"1504","Product Name":"VALENTIA VERMOUTH (stock)","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":700,"Measure Size (ml)":50,"Active":"YES"},
+    {"PLU":"1501","Product Name":"VANILLA VODKA","Category":"Spirits","Typical Volume (ml)":700,"Measure Size (ml)":35.5,"Active":"YES"},
+    {"PLU":"1505","Product Name":"GRENADINE","Category":"Syrups & Cordials","Typical Volume (ml)":700,"Measure Size (ml)":10,"Active":"YES"},
+    {"PLU":"1506","Product Name":"ORANGE BITTER","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":200,"Measure Size (ml)":1,"Active":"YES"},
+    {"PLU":"1507","Product Name":"BITTER","Category":"Liqueurs & Aperitifs","Typical Volume (ml)":200,"Measure Size (ml)":1,"Active":"YES"}
 ]
 
 DEFAULT_PRICES_DATA = [
-    {"Supplier": "Cliffords C&C", "Product Name": "Jameson 1L x 6", "Pack Size": 6, "Volume (ml)": 1000, "Price per Case (€)": 174.95, "Linked PLU": "123", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Sive", "Product Name": "Jameson 1L x 6", "Pack Size": 6, "Volume (ml)": 1000, "Price per Case (€)": 193.50, "Linked PLU": "123", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Classic Drinks", "Product Name": "Jameson 1L x 6 (Promo)", "Pack Size": 6, "Volume (ml)": 1000, "Price per Case (€)": 182.00, "Linked PLU": "123", "FOC Buy": 5, "FOC Free": 1, "In Stock": True},
-    {"Supplier": "Cliffords C&C", "Product Name": "Gordon's Gin 1L x 12", "Pack Size": 12, "Volume (ml)": 1000, "Price per Case (€)": 285.95, "Linked PLU": "161", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Classic Drinks", "Product Name": "Gordons Gin 1L x 12", "Pack Size": 12, "Volume (ml)": 1000, "Price per Case (€)": 298.00, "Linked PLU": "161", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Sive", "Product Name": "Gordons Gin 1L x 12", "Pack Size": 12, "Volume (ml)": 1000, "Price per Case (€)": 318.00, "Linked PLU": "161", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Cliffords C&C", "Product Name": "Smirnoff Vodka 1L x 12", "Pack Size": 12, "Volume (ml)": 1000, "Price per Case (€)": 258.90, "Linked PLU": "191", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Classic Drinks", "Product Name": "Smirnoff Vodka 1L x 12", "Pack Size": 12, "Volume (ml)": 1000, "Price per Case (€)": 262.00, "Linked PLU": "191", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Classic Drinks", "Product Name": "Hennessy 700ml x 12", "Pack Size": 12, "Volume (ml)": 700, "Price per Case (€)": 359.00, "Linked PLU": "211", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Cliffords C&C", "Product Name": "Hennessy 700ml x 12", "Pack Size": 12, "Volume (ml)": 700, "Price per Case (€)": 339.00, "Linked PLU": "211", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Classic Drinks", "Product Name": "Bacardi 1L x 6", "Pack Size": 6, "Volume (ml)": 1000, "Price per Case (€)": 151.00, "Linked PLU": "221", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Cliffords C&C", "Product Name": "Bacardi 1L x 6", "Pack Size": 6, "Volume (ml)": 1000, "Price per Case (€)": 162.95, "Linked PLU": "221", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Sive", "Product Name": "Bacardi 1L x 6", "Pack Size": 6, "Volume (ml)": 1000, "Price per Case (€)": 149.70, "Linked PLU": "221", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Classic Drinks", "Product Name": "Jack Daniels 700ml x 6", "Pack Size": 6, "Volume (ml)": 700, "Price per Case (€)": 138.00, "Linked PLU": "231", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Cliffords C&C", "Product Name": "Jack Daniels 700ml x 6", "Pack Size": 6, "Volume (ml)": 700, "Price per Case (€)": 146.95, "Linked PLU": "231", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Classic Drinks", "Product Name": "Baileys 1L x 12", "Pack Size": 12, "Volume (ml)": 1000, "Price per Case (€)": 201.00, "Linked PLU": "291", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Cliffords C&C", "Product Name": "Baileys 1L x 12", "Pack Size": 12, "Volume (ml)": 1000, "Price per Case (€)": 220.00, "Linked PLU": "291", "FOC Buy": 0, "FOC Free": 0, "In Stock": True},
-    {"Supplier": "Cliffords C&C", "Product Name": "Aperol 700ml x 6", "Pack Size": 6, "Volume (ml)": 700, "Price per Case (€)": 74.95, "Linked PLU": "1508", "FOC Buy": 0, "FOC Free": 0, "In Stock": True}
+    {"Supplier":"Classic Drinks","Product Name":"BACARDI","Pack Size":6,"Volume (ml)":1000,"Price per Case (€)":151,"Linked PLU":"221","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"BAILEYS","Pack Size":12,"Volume (ml)":1000,"Price per Case (€)":201,"Linked PLU":"291","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"CAPTAIN MORGAN","Pack Size":12,"Volume (ml)":1000,"Price per Case (€)":282,"Linked PLU":"224","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"COINTREAU BOLS TRIPLE SEC","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":145,"Linked PLU":"298","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"DINGLE GIN","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":146,"Linked PLU":"164","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"DINGLE VODKA","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":123,"Linked PLU":"190","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"GORDONS GIN","Pack Size":12,"Volume (ml)":1000,"Price per Case (€)":298,"Linked PLU":"161","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"HENDRICKS","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":183,"Linked PLU":"166","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"HENNESSY","Pack Size":12,"Volume (ml)":700,"Price per Case (€)":359,"Linked PLU":"211","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"JACK DANIELS","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":138,"Linked PLU":"231","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"JAGERMEISTER","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":101,"Linked PLU":"271","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"MALIBU","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":79,"Linked PLU":"223","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"PADDY","Pack Size":6,"Volume (ml)":1000,"Price per Case (€)":142,"Linked PLU":"121","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"SMIRNOFF Vodka","Pack Size":12,"Volume (ml)":1000,"Price per Case (€)":262,"Linked PLU":"191","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"SOUTHERN COMFORT","Pack Size":12,"Volume (ml)":700,"Price per Case (€)":182,"Linked PLU":"235","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"TEQUILA","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":109,"Linked PLU":"272","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"TIA MARIA","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":92,"Linked PLU":"292","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Classic Drinks","Product Name":"Tequila Rose","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":94.5,"Linked PLU":"273","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"ABSOLUT VODKA","Pack Size":12,"Volume (ml)":1000,"Price per Case (€)":270,"Linked PLU":"192","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"ABSOLUT VODKA VANILLA","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":119,"Linked PLU":"1501","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"AFTERSHOCK RED","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":114.95,"Linked PLU":"276","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"APEROL","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":74.95,"Linked PLU":"1508","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"BACARDI","Pack Size":6,"Volume (ml)":1000,"Price per Case (€)":162.95,"Linked PLU":"221","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"BAILEYS","Pack Size":12,"Volume (ml)":1000,"Price per Case (€)":220,"Linked PLU":"291","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"BLACK BUSH","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":134.95,"Linked PLU":"126","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"BOMBAY SAPPHIRE","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":134.95,"Linked PLU":"168","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"BUSHMILLS WHITE","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":121.95,"Linked PLU":"125","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"CAMPARI","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":105,"Linked PLU":"294","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"CANADIAN CLUB","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":129.95,"Linked PLU":"234","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"CAPTAIN MORGAN SPICED","Pack Size":6,"Volume (ml)":1000,"Price per Case (€)":159.95,"Linked PLU":"224","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"CASAMIGOS BLANCO","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":279,"Linked PLU":"263","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"CASAMIGOS REPOSADO","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":295,"Linked PLU":"264","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"COINTREAU","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":155,"Linked PLU":"298","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"CR DE MENTHE GREEN BOLS","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":99,"Linked PLU":"289","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"DINGLE GIN","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":149.95,"Linked PLU":"164","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"DINGLE VODKA","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":126,"Linked PLU":"190","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"DISARONNO AMARETTO","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":129.95,"Linked PLU":"300","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"GORDONS GIN","Pack Size":12,"Volume (ml)":1000,"Price per Case (€)":285.95,"Linked PLU":"161","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"GORDONS PINK GIN","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":109.95,"Linked PLU":"162","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"GRAND MARNIER","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":154.95,"Linked PLU":"299","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"GREEN SPOT","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":219,"Linked PLU":"127","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"GRENADINE SYRUP MONIN","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":42.5,"Linked PLU":"1505","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"GREY GOOSE VODKA","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":199,"Linked PLU":"193","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"HARVEYS BRISTOL CREAM","Pack Size":6,"Volume (ml)":750,"Price per Case (€)":79.95,"Linked PLU":"306","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"HENDRICKS GIN","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":185,"Linked PLU":"166","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"HENNESSY BRANDY","Pack Size":12,"Volume (ml)":700,"Price per Case (€)":339,"Linked PLU":"211","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"JACK DANIELS","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":146.95,"Linked PLU":"231","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"JAGERMEISTER","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":106.95,"Linked PLU":"271","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"JAMESON","Pack Size":6,"Volume (ml)":1000,"Price per Case (€)":174.95,"Linked PLU":"123","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"JAMESON BLACK BARREL","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":205,"Linked PLU":"124","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"JOHNNIE WALKER BLACK","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":174.95,"Linked PLU":"254","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"JOHNNIE WALKER RED","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":119.95,"Linked PLU":"253","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"JOSE CUERVO SILVER","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":129.95,"Linked PLU":"261","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"JOSE CUERVO GOLD","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":129.95,"Linked PLU":"262","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"KAHLUA","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":109,"Linked PLU":"293","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"MALIBU","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":84.95,"Linked PLU":"223","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"MARTINI EXTRA DRY","Pack Size":6,"Volume (ml)":750,"Price per Case (€)":64.95,"Linked PLU":"296","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"MARTINI ROSSO","Pack Size":6,"Volume (ml)":750,"Price per Case (€)":64.95,"Linked PLU":"297","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"MIDLETON VERY RARE","Pack Size":1,"Volume (ml)":700,"Price per Case (€)":199,"Linked PLU":"131","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"PADDY","Pack Size":6,"Volume (ml)":1000,"Price per Case (€)":149.95,"Linked PLU":"121","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"PEACH SCHNAPPS ARCHERS","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":94.95,"Linked PLU":"295","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"POWERS","Pack Size":6,"Volume (ml)":1000,"Price per Case (€)":174.95,"Linked PLU":"122","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"REDBREAST 12 YO","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":269,"Linked PLU":"132","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"REDBREAST 15 YO","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":429,"Linked PLU":"133","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"REMY MARTIN VSOP","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":249,"Linked PLU":"213","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"SAMBUCA RAMAZZOTTI","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":109.95,"Linked PLU":"274","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"SANDEMAN RUBY PORT","Pack Size":6,"Volume (ml)":750,"Price per Case (€)":74.95,"Linked PLU":"305","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"SMIRNOFF RED","Pack Size":12,"Volume (ml)":1000,"Price per Case (€)":258.9,"Linked PLU":"191","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"SOUTHERN COMFORT","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":104.95,"Linked PLU":"235","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"SOURZ APPLE","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":69.95,"Linked PLU":"277","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"TEACHERS","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":114.95,"Linked PLU":"252","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"TEQUILA ROSE","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":99,"Linked PLU":"273","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"TIA MARIA","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":99,"Linked PLU":"292","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"TITOS HANDMADE VODKA","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":139,"Linked PLU":"194","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"WOODFORD RESERVE","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":179,"Linked PLU":"236","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Cliffords C&C","Product Name":"YELLOW SPOT","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":339,"Linked PLU":"128","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Sive","Product Name":"AFTERSHOCK RED 70CL","Pack Size":6,"Volume (ml)":700,"Price per Case (€)":122,"Linked PLU":"276","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Sive","Product Name":"BACARDI 1LTR","Pack Size":6,"Volume (ml)":1000,"Price per Case (€)":149.7,"Linked PLU":"221","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Sive","Product Name":"GORDONS GIN 1LTR","Pack Size":12,"Volume (ml)":1000,"Price per Case (€)":318,"Linked PLU":"161","FOC Buy":0,"FOC Free":0,"In Stock":True},
+    {"Supplier":"Sive","Product Name":"JAMESON 1LTR","Pack Size":6,"Volume (ml)":1000,"Price per Case (€)":193.5,"Linked PLU":"123","FOC Buy":0,"FOC Free":0,"In Stock":True}
 ]
 
 # ==============================================================================
-# STATE MANAGEMENT
+# STATE INITIALIZATION
 # ==============================================================================
 def init_session_state():
-    """Initializes app state with Master Catalog and Supplier Quotes."""
+    """Initializes app state with the full 76 Master Items and all Supplier Quotes."""
     if "master_df" not in st.session_state:
         df_m = pd.DataFrame(DEFAULT_MASTER_DATA)
         df_m["Measures in Bottle"] = (df_m["Typical Volume (ml)"] / df_m["Measure Size (ml)"]).round(2)
@@ -167,7 +275,7 @@ def get_enriched_prices() -> pd.DataFrame:
 
 
 def generate_comparison_df() -> pd.DataFrame:
-    """Builds side-by-side comparison matrix for all PLUs across suppliers."""
+    """Builds side-by-side comparison matrix for all 76 PLUs across suppliers."""
     df_m = st.session_state.master_df
     df_p = get_enriched_prices()
 
@@ -263,9 +371,11 @@ with st.sidebar:
     st.divider()
     st.markdown("**Irish Standard Measure Guide:**")
     st.markdown("- Irish Standard Shot: **35.5 ml**")
-    st.markdown("- Liqueur / Aperitif: **50.0 ml**")
-    st.markdown("- Standard Spirit 700ml: **19.72 measures**")
-    st.markdown("- Standard Spirit 1000ml: **28.17 measures**")
+    st.markdown("- Liqueurs & Aperitifs: **50.0 ml**")
+    st.markdown("- Soft Drinks & Mixers: **200.0 ml**")
+    st.markdown("- Syrups & Cordials: **25.0 ml**")
+    st.markdown("- 700ml Spirit Bottle: **19.72 measures**")
+    st.markdown("- 1000ml Spirit Bottle: **28.17 measures**")
 
 
 # ==============================================================================
@@ -286,7 +396,7 @@ tab_master, tab_prices, tab_comparison, tab_invoice, tab_import_export = st.tabs
 # TAB 1: MASTER CATALOG
 # ------------------------------------------------------------------------------
 with tab_master:
-    st.subheader("📋 TouchOffice PLU Master Catalog")
+    st.subheader(f"📋 TouchOffice PLU Master Catalog ({len(st.session_state.master_df)} items)")
     st.caption("Official bar inventory registry: PLU codes, volume in ml, optic measure size, and measures per bottle.")
 
     col_s1, col_s2, col_s3 = st.columns([3, 2, 2])
@@ -317,52 +427,94 @@ with tab_master:
         hide_index=True
     )
 
-    # Add / Edit Master Item Form
-    with st.expander("➕ Add New Item to Master Catalog"):
-        with st.form("add_master_item_form"):
-            c1, c2 = st.columns(2)
-            f_plu = c1.text_input("TouchOffice PLU (Our Code)*", placeholder="e.g. 150")
-            f_name = c2.text_input("Product Name (EPOS)*", placeholder="e.g. TULLAMORE DEW 12 YO")
-            f_cat = c1.selectbox("Category", list(STANDARD_MEASURES.keys()), index=0)
-            f_vol = c2.number_input("Typical Volume (ml)", min_value=50, max_value=5000, value=700, step=50)
-            default_measure = STANDARD_MEASURES.get(f_cat, 35.5)
-            f_measure = c1.number_input("Measure Size (ml)", min_value=1.0, max_value=500.0, value=float(default_measure), step=0.5)
-            f_active = c2.selectbox("Active in Bar", ["YES", "NO"], index=0)
+    c_crud1, c_crud2 = st.columns(2)
 
-            submitted = st.form_submit_button("Save Item to Catalog", type="primary")
-            if submitted:
-                clean_plu = f_plu.strip()
-                clean_name = f_name.strip()
-                if not clean_plu or not clean_name:
-                    st.error("Please fill in both PLU and Product Name!")
-                elif clean_plu in st.session_state.master_df["PLU"].astype(str).values:
-                    st.error(f"PLU '{clean_plu}' already exists in catalog! Each product must have a unique PLU.")
-                else:
-                    new_item = {
-                        "PLU": clean_plu,
-                        "Product Name": clean_name,
-                        "Category": f_cat,
-                        "Typical Volume (ml)": int(f_vol),
-                        "Measure Size (ml)": float(f_measure),
-                        "Measures in Bottle": round(f_vol / f_measure, 2),
-                        "Active": f_active
-                    }
-                    st.session_state.master_df = pd.concat([st.session_state.master_df, pd.DataFrame([new_item])], ignore_index=True)
-                    st.success(f"Product '{clean_name}' (PLU {clean_plu}) successfully added!")
-                    st.rerun()
+    # 1. Add New Master Item
+    with c_crud1:
+        with st.expander("➕ Add New Item to Master Catalog"):
+            with st.form("add_master_item_form"):
+                f_plu = st.text_input("TouchOffice PLU (Till Code)*", placeholder="e.g. 501")
+                f_name = st.text_input("Product Name (POS Description)*", placeholder="e.g. DINGLE WHISKEY")
+                f_cat = st.selectbox("Category", list(STANDARD_MEASURES.keys()), index=0)
+                f_vol = st.number_input("Typical Volume (ml)", min_value=50, max_value=5000, value=700, step=50)
+                default_measure = STANDARD_MEASURES.get(f_cat, 35.5)
+                f_measure = st.number_input("Measure Size (ml)", min_value=1.0, max_value=500.0, value=float(default_measure), step=0.5)
+                f_active = st.selectbox("Active in Bar", ["YES", "NO"], index=0)
+
+                submitted = st.form_submit_button("Save Item to Catalog", type="primary")
+                if submitted:
+                    clean_plu = f_plu.strip()
+                    clean_name = f_name.strip()
+                    if not clean_plu or not clean_name:
+                        st.error("Please fill in both PLU and Product Name!")
+                    elif clean_plu in st.session_state.master_df["PLU"].astype(str).values:
+                        st.error(f"PLU '{clean_plu}' already exists in catalog! Each product must have a unique PLU.")
+                    else:
+                        new_item = {
+                            "PLU": clean_plu,
+                            "Product Name": clean_name,
+                            "Category": f_cat,
+                            "Typical Volume (ml)": int(f_vol),
+                            "Measure Size (ml)": float(f_measure),
+                            "Measures in Bottle": round(f_vol / f_measure, 2),
+                            "Active": f_active
+                        }
+                        st.session_state.master_df = pd.concat([st.session_state.master_df, pd.DataFrame([new_item])], ignore_index=True)
+                        st.success(f"Product '{clean_name}' (PLU {clean_plu}) successfully added!")
+                        st.rerun()
+
+    # 2. Edit or Delete Existing Item
+    with c_crud2:
+        with st.expander("✏️ Edit / Delete Existing Item"):
+            edit_options = [f"{r['PLU']} - {r['Product Name']}" for _, r in st.session_state.master_df.iterrows()]
+            selected_to_edit = st.selectbox("Select Product to Modify:", edit_options, key="select_edit_m")
+            if selected_to_edit:
+                sel_plu = selected_to_edit.split(" - ")[0]
+                current_row = st.session_state.master_df[st.session_state.master_df["PLU"].astype(str) == sel_plu].iloc[0]
+
+                with st.form("edit_master_form"):
+                    e_name = st.text_input("Product Name", value=current_row["Product Name"])
+                    e_cat = st.selectbox(
+                        "Category",
+                        list(STANDARD_MEASURES.keys()),
+                        index=list(STANDARD_MEASURES.keys()).index(current_row["Category"]) if current_row["Category"] in STANDARD_MEASURES else 0
+                    )
+                    e_vol = st.number_input("Typical Volume (ml)", min_value=50, max_value=5000, value=int(current_row["Typical Volume (ml)"]), step=50)
+                    e_measure = st.number_input("Measure Size (ml)", min_value=1.0, max_value=500.0, value=float(current_row["Measure Size (ml)"]), step=0.5)
+                    e_active = st.selectbox("Active", ["YES", "NO"], index=0 if current_row["Active"] == "YES" else 1)
+
+                    col_b1, col_b2 = st.columns(2)
+                    save_edit = col_b1.form_submit_button("Update Item", type="primary")
+                    del_edit = col_b2.form_submit_button("Delete Item", type="secondary")
+
+                    if save_edit:
+                        idx = st.session_state.master_df[st.session_state.master_df["PLU"].astype(str) == sel_plu].index[0]
+                        st.session_state.master_df.at[idx, "Product Name"] = e_name.strip()
+                        st.session_state.master_df.at[idx, "Category"] = e_cat
+                        st.session_state.master_df.at[idx, "Typical Volume (ml)"] = int(e_vol)
+                        st.session_state.master_df.at[idx, "Measure Size (ml)"] = float(e_measure)
+                        st.session_state.master_df.at[idx, "Measures in Bottle"] = round(e_vol / e_measure, 2)
+                        st.session_state.master_df.at[idx, "Active"] = e_active
+                        st.success(f"PLU {sel_plu} updated successfully!")
+                        st.rerun()
+
+                    if del_edit:
+                        st.session_state.master_df = st.session_state.master_df[st.session_state.master_df["PLU"].astype(str) != sel_plu].reset_index(drop=True)
+                        st.success(f"PLU {sel_plu} removed from catalog!")
+                        st.rerun()
 
 
 # ------------------------------------------------------------------------------
 # TAB 2: SUPPLIER PRICES
 # ------------------------------------------------------------------------------
 with tab_prices:
-    st.subheader("🏢 Supplier Wholesale Prices")
-    st.caption("Case prices from distributors (Cliffords C&C, Classic Drinks, Sive) with FOC deal support and optic cost calculations.")
+    st.subheader(f"🏢 Wholesale Supplier Prices ({len(st.session_state.prices_df)} quotes)")
+    st.caption("Case prices from distributors (Classic Drinks, Cliffords C&C, Sive) with FOC deal support and optic cost calculations.")
 
     df_p_enriched = get_enriched_prices()
 
     col_p1, col_p2 = st.columns([3, 2])
-    search_price = col_p1.text_input("🔍 Search quotes by product or supplier:", key="p_search")
+    search_price = col_p1.text_input("🔍 Search quotes by product, supplier, or PLU:", key="p_search")
     sup_options = ["All Suppliers"] + sorted(df_p_enriched["Supplier"].unique().tolist()) if not df_p_enriched.empty else ["All"]
     sup_filter = col_p2.selectbox("Filter Supplier:", sup_options, key="p_sup")
 
@@ -388,50 +540,67 @@ with tab_prices:
         hide_index=True
     )
 
+    cp_crud1, cp_crud2 = st.columns(2)
+
     # Add Supplier Quote Form
-    with st.expander("➕ Add Supplier Price Quote"):
-        with st.form("add_supplier_quote_form"):
-            c_a, c_b = st.columns(2)
-            plu_items = [f"{r['PLU']} - {r['Product Name']}" for _, r in st.session_state.master_df.iterrows()]
-            selected_master = c_a.selectbox("Link to Master PLU*", plu_items)
-            sup_name = c_b.selectbox("Supplier*", ["Cliffords C&C", "Classic Drinks", "Sive", "Custom Supplier"])
-            if sup_name == "Custom Supplier":
-                sup_name = c_b.text_input("Enter Supplier Name", "New Supplier")
+    with cp_crud1:
+        with st.expander("➕ Add Supplier Price Quote"):
+            with st.form("add_supplier_quote_form"):
+                plu_items = [f"{r['PLU']} - {r['Product Name']}" for _, r in st.session_state.master_df.iterrows()]
+                selected_master = st.selectbox("Link to Master PLU*", plu_items)
+                sup_name = st.selectbox("Supplier*", ["Classic Drinks", "Cliffords C&C", "Sive", "Other Supplier"])
+                if sup_name == "Other Supplier":
+                    sup_name = st.text_input("Enter Supplier Name", "New Supplier")
 
-            item_title = c_a.text_input("Supplier Description", placeholder="e.g. Jameson 1L x 6 Case")
-            case_price = c_b.number_input("Case Price (€)*", min_value=1.0, value=150.0, step=1.0)
-            pack_bottles = c_a.number_input("Bottles per Case*", min_value=1, value=6, step=1)
-            vol_bottle = c_b.number_input("Bottle Volume (ml)*", min_value=50, value=1000, step=50)
+                item_title = st.text_input("Supplier Description", placeholder="e.g. Jameson 1L x 6 Case")
+                case_price = st.number_input("Case Price (€)*", min_value=1.0, value=150.0, step=1.0)
+                pack_bottles = st.number_input("Bottles per Case*", min_value=1, value=6, step=1)
+                vol_bottle = st.number_input("Bottle Volume (ml)*", min_value=50, value=1000, step=50)
 
-            st.markdown("**Free-of-Charge (FOC) Deal (Optional):**")
-            cf1, cf2 = st.columns(2)
-            foc_b = cf1.number_input("Buy X Cases", min_value=0, value=0, step=1)
-            foc_f = cf2.number_input("Get Y Free Cases", min_value=0, value=0, step=1)
+                st.markdown("**Free-of-Charge (FOC) Deal (Optional):**")
+                cf1, cf2 = st.columns(2)
+                foc_b = cf1.number_input("Buy X Cases", min_value=0, value=0, step=1)
+                foc_f = cf2.number_input("Get Y Free Cases", min_value=0, value=0, step=1)
 
-            if st.form_submit_button("Add Quote to Database", type="primary"):
-                sel_plu = selected_master.split(" - ")[0]
-                new_quote = {
-                    "Supplier": sup_name,
-                    "Product Name": item_title or selected_master.split(" - ")[1],
-                    "Pack Size": int(pack_bottles),
-                    "Volume (ml)": int(vol_bottle),
-                    "Price per Case (€)": float(case_price),
-                    "Linked PLU": sel_plu,
-                    "FOC Buy": int(foc_b),
-                    "FOC Free": int(foc_f),
-                    "In Stock": True
-                }
-                st.session_state.prices_df = pd.concat([st.session_state.prices_df, pd.DataFrame([new_quote])], ignore_index=True)
-                st.success("Price quote successfully saved!")
-                st.rerun()
+                if st.form_submit_button("Add Quote to Database", type="primary"):
+                    sel_plu = selected_master.split(" - ")[0]
+                    new_quote = {
+                        "Supplier": sup_name,
+                        "Product Name": item_title or selected_master.split(" - ")[1],
+                        "Pack Size": int(pack_bottles),
+                        "Volume (ml)": int(vol_bottle),
+                        "Price per Case (€)": float(case_price),
+                        "Linked PLU": sel_plu,
+                        "FOC Buy": int(foc_b),
+                        "FOC Free": int(foc_f),
+                        "In Stock": True
+                    }
+                    st.session_state.prices_df = pd.concat([st.session_state.prices_df, pd.DataFrame([new_quote])], ignore_index=True)
+                    st.success("Price quote successfully saved!")
+                    st.rerun()
+
+    # Delete Quote Form
+    with cp_crud2:
+        with st.expander("🗑️ Delete Price Quote"):
+            if not st.session_state.prices_df.empty:
+                quote_opts = [
+                    f"#{i} | {r['Supplier']} - {r['Product Name']} (PLU {r['Linked PLU']}) - €{r['Price per Case (€)']:.2f}"
+                    for i, r in st.session_state.prices_df.iterrows()
+                ]
+                sel_quote = st.selectbox("Select Quote to Remove:", quote_opts)
+                if st.button("Delete Selected Quote", type="secondary"):
+                    idx_to_del = int(sel_quote.split(" | ")[0].replace("#", ""))
+                    st.session_state.prices_df = st.session_state.prices_df.drop(idx_to_del).reset_index(drop=True)
+                    st.success("Quote removed!")
+                    st.rerun()
 
 
 # ------------------------------------------------------------------------------
 # TAB 3: PRICE COMPARISON
 # ------------------------------------------------------------------------------
 with tab_comparison:
-    st.subheader("📊 Price Comparison Matrix")
-    st.caption("Side-by-side benchmark of all wholesale distributors per PLU. Automatically reveals lowest bottle price, optic cost, and cost savings.")
+    st.subheader(f"📊 Price Comparison Matrix ({len(st.session_state.master_df)} products)")
+    st.caption("Side-by-side benchmark of wholesale distributors per PLU. Automatically identifies lowest bottle price, measure cost, and potential savings.")
 
     df_comp = generate_comparison_df()
 
@@ -448,13 +617,13 @@ with tab_comparison:
     if savings_only:
         df_comp_view = df_comp_view[df_comp_view["Savings per Bottle (€)"] > 0]
 
-    # Quick High-Level Metrics
+    # Metrics
     total_items = len(df_comp_view)
     items_with_savings = len(df_comp_view[df_comp_view["Savings per Bottle (€)"] > 0])
     avg_savings = df_comp_view[df_comp_view["Savings per Bottle (€)"] > 0]["Savings per Bottle (€)"].mean() if items_with_savings > 0 else 0.0
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Items Monitored", total_items)
+    m1.metric("Products Monitored", total_items)
     m2.metric("Items with Distributor Gap", items_with_savings)
     m3.metric("Avg Saving per Bottle", f"€{avg_savings:.2f}")
 
@@ -479,7 +648,7 @@ with tab_invoice:
     st.caption("Reconcile delivery invoices against contracted price lists upon arrival to detect overcharges and issue credit note claims.")
 
     inv_c1, inv_c2, inv_c3 = st.columns(3)
-    available_sups = sorted(st.session_state.prices_df["Supplier"].unique().tolist()) if not st.session_state.prices_df.empty else ["Cliffords C&C"]
+    available_sups = sorted(st.session_state.prices_df["Supplier"].unique().tolist()) if not st.session_state.prices_df.empty else ["Classic Drinks"]
     inv_supplier = inv_c1.selectbox("Supplier on Invoice:", available_sups, key="audit_sup")
     inv_number = inv_c2.text_input("Invoice Number:", value="INV-2026-08892", key="audit_num")
     inv_date = inv_c3.date_input("Delivery Date:", datetime.today())
@@ -603,7 +772,7 @@ with tab_import_export:
 
     with col_io1:
         st.markdown("### 📤 Export Data to Excel")
-        st.write("Download the complete 4-sheet workbook with current Master Catalog, Supplier Prices, Comparison, and Invoices:")
+        st.write(f"Download the complete 4-sheet workbook with current {len(st.session_state.master_df)} Master Items, {len(st.session_state.prices_df)} Supplier Prices, Comparison, and Invoices:")
         st.download_button(
             label="📥 Download Kerry_Coast_Spirits_Master_Catalog.xlsx",
             data=export_full_excel_workbook(),
@@ -636,11 +805,11 @@ with tab_import_export:
                     st.error(f"Error reading file: {e}")
 
     st.divider()
-    if st.button("🔄 Reset to Default Kerry Coast Hotel Data"):
+    if st.button("🔄 Reset to Default 76-Item Kerry Coast Data"):
         st.session_state.master_df = pd.DataFrame(DEFAULT_MASTER_DATA)
         st.session_state.master_df["Measures in Bottle"] = (
             st.session_state.master_df["Typical Volume (ml)"] / st.session_state.master_df["Measure Size (ml)"]
         ).round(2)
         st.session_state.prices_df = pd.DataFrame(DEFAULT_PRICES_DATA)
-        st.success("Database restored to Kerry Coast defaults!")
+        st.success(f"Database restored to Kerry Coast defaults ({len(DEFAULT_MASTER_DATA)} items)!")
         st.rerun()

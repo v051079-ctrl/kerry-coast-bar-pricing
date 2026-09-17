@@ -529,16 +529,75 @@ with tab_prices:
     if sup_filter != "All Suppliers":
         df_p_filtered = df_p_filtered[df_p_filtered["Supplier"] == sup_filter]
 
-    st.dataframe(
-        df_p_filtered.style.format({
-            "Price per Case (€)": "{:,.2f} €",
-            "Effective Bottle Price (€)": "{:,.2f} €",
-            "Cost per Measure (€)": "{:,.2f} €",
-            "Measures in Bottle": "{:,.2f}"
-        }),
+    editable_cols = ["Price per Case (€)", "FOC Buy", "FOC Free"]
+    disabled_cols = [col for col in df_p_filtered.columns if col not in editable_cols]
+
+    edited_df = st.data_editor(
+        df_p_filtered,
+        key="supplier_prices_editor",
+        disabled=disabled_cols,
+        column_config={
+            "Price per Case (€)": st.column_config.NumberColumn(
+                "Price per Case (€)",
+                help="Wholesale case price in Euros. Click to edit.",
+                min_value=0.0,
+                step=0.5,
+                format="%.2f €"
+            ),
+            "FOC Buy": st.column_config.NumberColumn(
+                "FOC Buy",
+                help="Buy X Cases (set to 0 to disable promo)",
+                min_value=0,
+                step=1,
+                format="%d"
+            ),
+            "FOC Free": st.column_config.NumberColumn(
+                "FOC Free",
+                help="Get Y Free Cases (set to 0 to disable promo)",
+                min_value=0,
+                step=1,
+                format="%d"
+            ),
+            "Effective Bottle Price (€)": st.column_config.NumberColumn(
+                "Effective Bottle Price (€)",
+                help="Calculated bottle cost including FOC promo deals",
+                format="%.2f €"
+            ),
+            "Cost per Measure (€)": st.column_config.NumberColumn(
+                "Cost per Measure (€)",
+                help="Optic shot cost calculated from bottle price & measure size",
+                format="%.2f €"
+            ),
+            "Measures in Bottle": st.column_config.NumberColumn(
+                "Measures in Bottle",
+                format="%.2f"
+            ),
+        },
         use_container_width=True,
         hide_index=True
     )
+
+    # Propagate edits back to st.session_state.prices_df
+    has_changes = False
+    if edited_df is not None:
+        for idx in edited_df.index:
+            if idx in st.session_state.prices_df.index:
+                for col in editable_cols:
+                    new_val = edited_df.at[idx, col]
+                    curr_val = st.session_state.prices_df.at[idx, col]
+                    if col == "Price per Case (€)":
+                        new_val = round(float(new_val), 2) if pd.notna(new_val) else 0.0
+                        curr_val = round(float(curr_val), 2) if pd.notna(curr_val) else 0.0
+                    else:
+                        new_val = int(new_val) if pd.notna(new_val) else 0
+                        curr_val = int(curr_val) if pd.notna(curr_val) else 0
+
+                    if new_val != curr_val:
+                        st.session_state.prices_df.at[idx, col] = new_val
+                        has_changes = True
+
+    if has_changes:
+        st.rerun()
 
     cp_crud1, cp_crud2 = st.columns(2)
 
@@ -689,7 +748,6 @@ with tab_invoice:
                 status = "✅ MATCHED"
         else:
             expected_bottle = None
-            # Фикс: Если контракта нет, принимаем ожидаемую сумму равной сумме в инвойсе (переплата = 0)
             total_expected += line_total_inv
             variance_bottle = 0.0
             variance_line = 0.0
@@ -708,12 +766,10 @@ with tab_invoice:
             "Audit Status": status
         })
 
-    # Mathematical total overcharge strictly calculated as (Total Invoiced - Contract Expected)
     total_invoiced = round(total_invoiced, 2)
     total_expected = round(total_expected, 2)
     total_overcharge = round(total_invoiced - total_expected, 2)
 
-    # Summary metric tiles
     col_k1, col_k2, col_k3 = st.columns(3)
     col_k1.metric("Total Invoiced", f"€{total_invoiced:,.2f}")
     col_k2.metric("Contract Expected", f"€{total_expected:,.2f}")
@@ -738,7 +794,6 @@ with tab_invoice:
 
     col_inv_a, col_inv_b = st.columns(2)
 
-    # 1. Add line to invoice
     with col_inv_a:
         with st.expander("➕ Add Line Item to Invoice", expanded=False):
             with st.form("add_inv_line_form"):
@@ -761,7 +816,6 @@ with tab_invoice:
                     })
                     st.rerun()
 
-    # 2. Manage / Remove line items or clear entire invoice
     with col_inv_b:
         with st.expander("🗑️ Remove Lines / Clear Invoice", expanded=False):
             if st.session_state.invoice_items:
@@ -786,7 +840,6 @@ with tab_invoice:
             else:
                 st.caption("Invoice is currently empty — no lines to remove.")
 
-    # Credit Note Generator
     if total_overcharge > 0.01:
         st.markdown("### ✉️ One-Click Credit Note Claim (Email Copy)")
         claim_body = f"""Subject: Kerry Coast Hotel - Invoice Discrepancy & Credit Note Request ({inv_number})
